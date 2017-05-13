@@ -1,5 +1,6 @@
 package by.bsuir.rpnJava.lr5.server;
 
+import by.bsuir.rpnJava.lr5.Server;
 import javafx.application.Application;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
@@ -25,7 +26,7 @@ public class ServerApp extends Application {
     }
 
     public void startUpServer() {
-        new Server();
         this.text.setText("Server started");
+        new Server();
     }
 }

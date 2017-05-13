@@ -1,6 +1,4 @@
-package by.bsuir.rpnJava.lr5.server;
-
-import by.bsuir.rpnJava.lr5.constant.Constant;
+package by.bsuir.rpnJava.lr5;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -8,18 +6,20 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 public class Server {
     private List<Connection> connections = Collections.synchronizedList(new ArrayList<Connection>());
     private ServerSocket serverSocket;
 
     public Server() {
+        Scanner scanner = new Scanner(System.in);
+        System.out.println(Constant.ENTER_PORT);
+        int portNumber = scanner.nextInt();
+
         try {
-            serverSocket = new ServerSocket(Constant.PORT_NUMBER);
+            serverSocket = new ServerSocket(portNumber);
+            System.out.println(Constant.SERVER_STARTED + portNumber);
 
             while (true) {
                 Socket socket = serverSocket.accept();
@@ -28,11 +28,11 @@ public class Server {
                 connections.add(con);
 
                 con.start();
-
             }
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
+            System.out.printf(Constant.SERVER_STOPPED);
             closeAll();
         }
     }
@@ -45,11 +45,11 @@ public class Server {
             synchronized(connections) {
                 Iterator<Connection> iterator = connections.iterator();
                 while(iterator.hasNext()) {
-                    ((Connection) iterator.next()).close();
+                    iterator.next().close();
                 }
             }
         } catch (Exception e) {
-            System.err.println("Fehler!");
+            System.err.println(Constant.SOMETHING_WRONG);
         }
     }
 
@@ -58,7 +58,7 @@ public class Server {
         private PrintWriter out;
         private Socket socket;
 
-        private String name = "";
+        private String name = Constant.EMPTY_STRING;
 
 
         public Connection(Socket socket) {
@@ -88,10 +88,10 @@ public class Server {
                     }
                 }
 
-                String str = "";
+                String str;
                 while (true) {
                     str = in.readLine();
-                    if(str.equals("exit")) break;
+                    if(str.equals(Constant.EXIT)) break;
 
 
                     synchronized(connections) {
@@ -105,7 +105,7 @@ public class Server {
                 synchronized(connections) {
                     Iterator<Connection> iter = connections.iterator();
                     while(iter.hasNext()) {
-                        ((Connection) iter.next()).out.println(name + " has left");
+                        ((Connection) iter.next()).out.println(name + Constant.LEFT_THE_CHAT);
                     }
                 }
             } catch (IOException e) {
@@ -128,7 +128,7 @@ public class Server {
                     System.exit(0);
                 }
             } catch (Exception e) {
-                System.err.println("Fehler!");
+                System.err.println(Constant.SOMETHING_WRONG);
             }
         }
     }

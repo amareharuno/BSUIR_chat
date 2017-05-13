@@ -1,2 +1,4 @@
 # Created by .ignore support plugin (hsz.mobi)
 .idea
+src/by/bsuir/rpnJava/lr5/server
+src/by/bsuir/rpnJava/lr5/client
