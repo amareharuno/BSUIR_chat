@@ -1,122 +1,135 @@
 package by.bsuir.rpnJava.lr5.server;
 
-import by.bsuir.rpnJava.lr5.server.util.Connection;
-import by.bsuir.rpnJava.lr5.server.util.InputUtil;
-import by.bsuir.rpnJava.lr5.server.util.Message;
-import by.bsuir.rpnJava.lr5.server.util.MessageType;
-import javafx.application.Application;
-import javafx.fxml.FXML;
-import javafx.fxml.FXMLLoader;
-import javafx.scene.Scene;
-import javafx.scene.control.TextArea;
-import javafx.scene.control.TextField;
-import javafx.stage.Stage;
+import by.bsuir.rpnJava.lr5.constant.Constant;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
 
-public class Server extends Application {
-    @FXML
-    private TextField portLabel;
-    @FXML
-    private TextArea text;
+public class Server {
+    private List<Connection> connections = Collections.synchronizedList(new ArrayList<Connection>());
+    private ServerSocket serverSocket;
 
-    private static Map<String, Connection> connectionMap = new ConcurrentHashMap<>();
+    public Server() {
+        try {
+            serverSocket = new ServerSocket(Constant.PORT_NUMBER);
 
-    @Override
-    public void start(Stage primaryStage) throws Exception {
-        FXMLLoader fxmlLoader = new FXMLLoader();
-        fxmlLoader.setLocation(getClass().getResource("server.fxml"));
-        Scene scene = new Scene(fxmlLoader.load());
-        primaryStage.setScene(scene);
-        primaryStage.setTitle("Server");
-        primaryStage.show();
+            while (true) {
+                Socket socket = serverSocket.accept();
+
+                Connection con = new Connection(socket);
+                connections.add(con);
+
+                con.start();
+
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            closeAll();
+        }
     }
 
-    public void startUpServer() {
-        int portNumber = Integer.parseInt(portLabel.getText());
-        try (ServerSocket socket = new ServerSocket(portNumber)) {
-            text.setText("Сервер запущен");
-            while (true) {
-                new Handler(socket.accept()).start();
+
+    private void closeAll() {
+        try {
+            serverSocket.close();
+
+            synchronized(connections) {
+                Iterator<Connection> iterator = connections.iterator();
+                while(iterator.hasNext()) {
+                    ((Connection) iterator.next()).close();
+                }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("Fehler!");
         }
     }
 
-    private static class Handler extends Thread {
+    private class Connection extends Thread {
+        private BufferedReader in;
+        private PrintWriter out;
         private Socket socket;
-        public Handler(Socket socket) {
+
+        private String name = "";
+
+
+        public Connection(Socket socket) {
             this.socket = socket;
+
+            try {
+                in = new BufferedReader(new InputStreamReader(
+                        socket.getInputStream()));
+                out = new PrintWriter(socket.getOutputStream(), true);
+
+            } catch (IOException e) {
+                e.printStackTrace();
+                close();
+            }
         }
+
 
         @Override
         public void run() {
-            InputUtil.writeMessage("Установлено новое соединение с удаленным адресом " + socket.getRemoteSocketAddress());
-            String userName = "";
-            try (Connection connection = new Connection(socket)) {
-                userName = serverHandshake(connection);
-                sendBroadcastMessage(new Message(MessageType.USER_ADDED, userName));
-                sendListOfUsers(connection, userName);
-                serverMainLoop(connection, userName);
+            try {
+                name = in.readLine();
+
+                synchronized(connections) {
+                    Iterator<Connection> iter = connections.iterator();
+                    while(iter.hasNext()) {
+                        ((Connection) iter.next()).out.println(name + " cames now");
+                    }
+                }
+
+                String str = "";
+                while (true) {
+                    str = in.readLine();
+                    if(str.equals("exit")) break;
+
+
+                    synchronized(connections) {
+                        Iterator<Connection> iter = connections.iterator();
+                        while(iter.hasNext()) {
+                            ((Connection) iter.next()).out.println(name + ": " + str);
+                        }
+                    }
+                }
+
+                synchronized(connections) {
+                    Iterator<Connection> iter = connections.iterator();
+                    while(iter.hasNext()) {
+                        ((Connection) iter.next()).out.println(name + " has left");
+                    }
+                }
             } catch (IOException e) {
-                InputUtil.writeMessage("Произошла ошибка при обмене данными с удаленным адресом");
-            } catch (ClassNotFoundException e) {
-                InputUtil.writeMessage("Произошла ошибка при обмене данными с удаленным адресом (класс не найден)");
+                e.printStackTrace();
             } finally {
-                if (!userName.equals("")) {
-                    connectionMap.remove(userName);
-                    sendBroadcastMessage(new Message(MessageType.USER_REMOVED, userName));
-                }
-            }
-            InputUtil.writeMessage("Соединение с удаленным адресом закрыто");
-        }
-
-        private String serverHandshake(Connection connection) throws IOException, ClassNotFoundException {
-            while (true) {
-                connection.send(new Message(MessageType.NAME_REQUEST));
-                Message receivedMessage = connection.receive();
-                if (receivedMessage.getType().equals(MessageType.USER_NAME) && !receivedMessage.getData().isEmpty()
-                        && receivedMessage.getData() != null && !connectionMap.containsKey(receivedMessage.getData())) {
-                    connectionMap.put(receivedMessage.getData(), connection);
-                    connection.send(new Message(MessageType.NAME_ACCEPTED));
-                    return receivedMessage.getData();
-                }
+                close();
             }
         }
 
-        private void sendListOfUsers(Connection connection, String userName) throws IOException {
-            for (Map.Entry<String, Connection> entry : connectionMap.entrySet()) {
-                if (!entry.getKey().equals(userName)) {
-                    connection.send(new Message(MessageType.USER_ADDED, entry.getKey()));
-                }
-            }
-        }
+        public void close() {
+            try {
+                in.close();
+                out.close();
+                socket.close();
 
-        private void serverMainLoop(Connection connection, String userName) throws IOException, ClassNotFoundException {
-            while (true) {
-                Message message = connection.receive();
-                if (message.getType() == MessageType.TEXT) {
-                    String text = userName + ": " + message.getData();
-                    sendBroadcastMessage(new Message(MessageType.TEXT, text));
-                } else {
-                    InputUtil.writeMessage("This message don't TEXT");
-                }
-            }
-        }
-    }
 
-    public static void sendBroadcastMessage(Message message) {
-        try {
-            for (Map.Entry<String, Connection> entry : connectionMap.entrySet()) {
-                entry.getValue().send(message);
+                connections.remove(this);
+                if (connections.size() == 0) {
+                    Server.this.closeAll();
+                    System.exit(0);
+                }
+            } catch (Exception e) {
+                System.err.println("Fehler!");
             }
-        } catch (IOException e) {
-            InputUtil.writeMessage("Ошибка при отправке сообщения");
         }
     }
 }
